@@ -149,7 +149,7 @@ function fingersCurled(P) {
 }
 
 /* ---------- main loop ---------- */
-let smooth = null, theta = 0, lastT = 0, lastVideoTime = -1;
+let smooth = null, lastT = 0, lastVideoTime = -1;
 let spiderActive = false, wasFist = false, frameCount = 0, detectCount = 0;
 function loop(now) {
   requestAnimationFrame(loop);
@@ -192,15 +192,13 @@ function loop(now) {
   drawWeb(P, C);
 
   const palm = Math.hypot(P[0].x - P[9].x, P[0].y - P[9].y);
-  theta += dt * 1.1;              // spin in place, no orbit
   tilt.visible = spiderActive;
   tilt.position.set(C.x, -C.y, 40);   // sit right at the center of the palm
-  tilt.rotation.x = 0.75;
-  spider.position.set(0, 0, 0);       // no orbit offset — stays put on the palm
-  spider.rotation.z = theta;          // spins in place like it's perched there
+  tilt.rotation.x = 0.75;             // fixed tilt so the 3D shape reads — never changes
+  spider.position.set(0, 0, 0);       // stays put on the palm, no movement at all
+  // spider.rotation.z is NOT updated — the model does not spin or rotate, it is fully static
   const s = Math.max(palm * 0.35, 0.001);
-  tilt.scale.set(s, s, s);
-  // legs stay in their fixed static pose — only spider.rotation.z (above) spins the whole model
+  tilt.scale.set(s, s, s);            // only scales with hand distance from camera
   renderer.render(scene, camera);
 }
 
