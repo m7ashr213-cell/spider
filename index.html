@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>🌍 كوكب على إيدك v6</title>
+<title>🌍 كوكب على إيدك v7</title>
 <style>
   html,body{margin:0;height:100%;background:#05060a;color:#fff;font-family:Tahoma,Arial,sans-serif;overflow:hidden}
   #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
@@ -29,8 +29,8 @@
   </div>
 </div>
 <div id="ui">
-  <h1>🌍 كوكب على إيدك <small style="font-size:14px;opacity:.6">v6</small></h1>
-  <div>هنفتح الكاميرا، اقفل إيدك وبعدين افتحها وشوف الكرة الأرضية والأشعة</div>
+  <h1>🌍 كوكب على إيدك <small style="font-size:14px;opacity:.6">v7</small></h1>
+  <div>هنفتح الكاميرا، اقفل إيدك وافتحها عشان الكرة تظهر. بالإيد التانية: صبعين = تكبير وتصغير، صبع واحد وبلفه = تدوير</div>
   <button id="go">ابدأ الكاميرا</button>
   <div id="status"></div>
   <div id="err"></div>
@@ -102,7 +102,6 @@ spider.add(earthPivot);
 const TIPS = [4,8,12,16,20];
 const CH = [[1,2,3,4],[5,6,7,8],[9,10,11,12],[13,14,15,16],[17,18,19,20]];
 function drawRays(P, C) {
-  ctx.clearRect(0, 0, VW, VH);
   ctx.save();
   ctx.lineCap = "round"; ctx.lineJoin = "round";
   ctx.strokeStyle = "rgba(70,160,255,.8)";
@@ -127,22 +126,94 @@ function drawRays(P, C) {
   ctx.restore();
 }
 
-/* ---------- fist detection for spawning the spider ---------- */
+/* ---------- gestures ---------- */
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const wrap = d => { while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
 function fingersCurled(P) {
-  // tip further from wrist than pip joint => extended; otherwise curled
   const pairs = [[8,6],[12,10],[16,14],[20,18]]; // tip, pip
   let curled = 0;
-  for (const [tip, pip] of pairs) {
-    const dTip = Math.hypot(P[tip].x - P[0].x, P[tip].y - P[0].y);
-    const dPip = Math.hypot(P[pip].x - P[0].x, P[pip].y - P[0].y);
-    if (dTip < dPip) curled++;
-  }
+  for (const [tip, pip] of pairs) if (dist(P[tip], P[0]) < dist(P[pip], P[0])) curled++;
   return curled >= 3;
+}
+const isExt = (P, tip, pip) => dist(P[tip], P[0]) > dist(P[pip], P[0]) * 1.15;
+function pose(P) {            // control-hand poses: one finger up / two fingers up
+  const i = isExt(P,8,6), m = isExt(P,12,10), r = isExt(P,16,14), p = isExt(P,20,18);
+  if (i && !m && !r && !p) return "one";
+  if (i && m && !r && !p) return "two";
+  return "other";
+}
+const centerOf = P => { const C = { x: 0, y: 0 }; for (const i of [0,5,9,13,17]) { C.x += P[i].x / 5; C.y += P[i].y / 5; } return C; };
+
+/* ---------- state ---------- */
+let smoothed = {}, curHands = [], curMain = null;
+let globeOn = false, mainLabel = null, noHandFrames = 0;
+let stableFist = false, pendingFist = false, pendingCount = 0;
+let ctrlPose = "none", scaleTarget = 1, scaleCur = 1;
+let tipC = null, prevTipAng = null, prevFingAng = null, spinAcc = 0;
+let lastT = 0, lastVideoTime = -1, frameCount = 0, detectCount = 0;
+
+function processHands(hands) {
+  curHands = hands;
+  if (!hands.length) {
+    curMain = null; ctrlPose = "none"; tipC = prevTipAng = prevFingAng = null;
+    stableFist = pendingFist = false; pendingCount = 0;
+    if (++noHandFrames > 60) mainLabel = null;
+    return;
+  }
+  noHandFrames = 0;
+  // --- who is the globe hand and who is the control hand ---
+  let main = null, ctrl = null;
+  if (mainLabel) {
+    main = hands.find(h => h.label === mainLabel) || null;
+    ctrl = hands.find(h => h.label !== mainLabel) || null;
+  } else if (hands.length === 1) {
+    main = hands[0];
+  } else {
+    main = hands.find(h => pose(h.raw) === "other") || hands[0];
+    ctrl = hands.find(h => h !== main);
+  }
+  curMain = main;
+
+  // --- globe hand: fist -> open flips the globe on/off ---
+  if (main) {
+    const nowFist = fingersCurled(main.raw);
+    if (nowFist === pendingFist) pendingCount++; else { pendingFist = nowFist; pendingCount = 1; }
+    if (pendingCount >= 3 && pendingFist !== stableFist) {
+      if (stableFist && !pendingFist) { globeOn = !globeOn; if (!mainLabel) mainLabel = main.label; }
+      stableFist = pendingFist;
+    }
+  }
+
+  // --- control hand: two fingers = size, one finger = spin ---
+  ctrlPose = "none";
+  if (ctrl) {
+    const P = ctrl.P, ps = pose(ctrl.raw), palm = dist(P[0], P[9]) || 1;
+    if (ps === "two") {
+      ctrlPose = "two";
+      const spread = dist(P[8], P[12]) / palm;              // fingers together ~0.15, wide apart ~0.65
+      const t = Math.max(0, Math.min(1, (spread - 0.18) / 0.47));
+      scaleTarget = 1 + t * 1.8;                            // closed = normal size (1x), open = up to 2.8x
+    } else if (ps === "one") {
+      ctrlPose = "one";
+      // angle of the finger itself (knuckle -> tip)
+      const fa = Math.atan2(P[8].y - P[5].y, P[8].x - P[5].x);
+      // angle of the fingertip circling around its own average position
+      if (!tipC) tipC = { x: P[8].x, y: P[8].y };
+      tipC.x += (P[8].x - tipC.x) * 0.15; tipC.y += (P[8].y - tipC.y) * 0.15;
+      const r = Math.hypot(P[8].x - tipC.x, P[8].y - tipC.y);
+      const ta = Math.atan2(P[8].y - tipC.y, P[8].x - tipC.x);
+      let dF = prevFingAng === null ? 0 : wrap(fa - prevFingAng);
+      let dT = (prevTipAng === null || r < palm * 0.08) ? 0 : wrap(ta - prevTipAng);
+      prevFingAng = fa; prevTipAng = ta;
+      let d = Math.abs(dT) > Math.abs(dF) ? dT : dF;
+      d = Math.max(-1.2, Math.min(1.2, d));
+      spinAcc += d;                                         // globe turns by the same angle the finger turned
+    }
+    if (ps !== "one") { tipC = prevTipAng = prevFingAng = null; }
+  } else { tipC = prevTipAng = prevFingAng = null; }
 }
 
 /* ---------- main loop ---------- */
-let smooth = null, lastT = 0, lastVideoTime = -1;
-let spiderActive = false, globeOn = false, stableFist = false, pendingFist = false, pendingCount = 0, frameCount = 0, detectCount = 0;
 function loop(now) {
   requestAnimationFrame(loop);
   const t = now / 1000, dt = Math.min(0.05, t - lastT); lastT = t;
@@ -150,44 +221,47 @@ function loop(now) {
   if (video.currentTime !== lastVideoTime && landmarker) {
     lastVideoTime = video.currentTime;
     const res = landmarker.detectForVideo(video, now);
-    if (res.landmarks && res.landmarks[0]) {
-      detectCount++;
-      const raw = res.landmarks[0].map(p => ({ x: p.x * VW, y: p.y * VH }));
-      smooth = smooth ? smooth.map((s, i) => ({ x: s.x + (raw[i].x - s.x) * 0.8, y: s.y + (raw[i].y - s.y) * 0.8 })) : raw;
-
-      const nowFist = fingersCurled(raw);
-      if (nowFist === pendingFist) pendingCount++; else { pendingFist = nowFist; pendingCount = 1; }
-      if (pendingCount >= 3 && pendingFist !== stableFist) {   // state held for 3 detections => real change
-        if (stableFist && !pendingFist) globeOn = !globeOn;     // fist -> open = switch the globe on/off
-        stableFist = pendingFist;
-      }
-      spiderActive = globeOn;
-    } else {
-      smooth = null;
-      stableFist = false; pendingFist = false; pendingCount = 0;   // lost hand: no accidental toggle
-    }
+    const hands = [], used = new Set();
+    (res.landmarks || []).forEach((lm, i) => {
+      let label = (res.handedness && res.handedness[i] && res.handedness[i][0] && res.handedness[i][0].categoryName) || "H" + i;
+      if (used.has(label)) label += "2";
+      used.add(label);
+      const raw = lm.map(p => ({ x: p.x * VW, y: p.y * VH }));
+      const prev = smoothed[label];
+      const P = prev ? prev.map((q, k) => ({ x: q.x + (raw[k].x - q.x) * 0.8, y: q.y + (raw[k].y - q.y) * 0.8 })) : raw;
+      smoothed[label] = P;
+      hands.push({ label, raw, P });
+    });
+    for (const k of Object.keys(smoothed)) if (!used.has(k)) delete smoothed[k];
+    if (hands.length) detectCount++;
+    processHands(hands);
   }
   if (frameCount % 60 === 0) {
-    setStatus(`فريمات: ${frameCount} | اكتشاف يد: ${detectCount} | كوكب: ${spiderActive ? "شغال" : "متوقف"}`);
+    setStatus(`أيادي: ${curHands.length} | كوكب: ${globeOn ? "شغال" : "متوقف"} | حجم: ${scaleCur.toFixed(2)}x`);
   }
-  if (!smooth) {
-    ctx.clearRect(0, 0, VW, VH); tilt.visible = false;
+  ctx.clearRect(0, 0, VW, VH);
+  if (!curHands.length) {
+    tilt.visible = false;
     msg.textContent = "✋ فرد إيدك قدام الكاميرا";
     renderer.render(scene, camera); return;
   }
   msg.textContent = "";
-  const P = smooth;
-  const C = { x: 0, y: 0 };
-  for (const i of [0,5,9,13,17]) { C.x += P[i].x / 5; C.y += P[i].y / 5; }
-  const palm = Math.hypot(P[0].x - P[9].x, P[0].y - P[9].y);
-  drawRays(P, C);
-  tilt.visible = spiderActive;
-  const sc = Math.max(palm * 0.33, 0.001);
-  const gx = C.x, gy = C.y;                          // exactly at the center of the palm
-  tilt.position.set(gx, -gy, 40);
-  tilt.rotation.x = 0.35;
-  earth.rotation.y += dt * 0.6;       // slow spin (delete this line for a static globe)
-  tilt.scale.set(sc, sc, sc);
+  for (const h of curHands) drawRays(h.P, centerOf(h.P));
+
+  // size: smooth toward target
+  scaleCur += (scaleTarget - scaleCur) * Math.min(1, dt * 12);
+
+  tilt.visible = globeOn && !!curMain;
+  if (tilt.visible) {
+    const P = curMain.P, C = centerOf(P);
+    const palm = dist(P[0], P[9]);
+    const sc = Math.max(palm * 0.33 * scaleCur, 0.001);
+    tilt.position.set(C.x, -C.y, 40);        // at the center of the globe-hand's palm
+    tilt.rotation.x = 0.35;
+    if (ctrlPose !== "one") earth.rotation.y += dt * 0.6;   // idle slow spin
+    earth.rotation.y += spinAcc; spinAcc = 0;                // finger-driven spin (same speed as the finger)
+    tilt.scale.set(sc, sc, sc);
+  } else { spinAcc = 0; }
   renderer.render(scene, camera);
 }
 
@@ -222,7 +296,7 @@ btn.onclick = async () => {
       landmarker = await HandLandmarker.createFromOptions(fs, {
         baseOptions: { modelAssetPath: url, delegate: "GPU" },
         runningMode: "VIDEO",
-        numHands: 1
+        numHands: 2
       });
       setStatus("الموديل اتحمل (GPU) ✓");
     } catch (eGPU) {
@@ -231,7 +305,7 @@ btn.onclick = async () => {
       landmarker = await HandLandmarker.createFromOptions(fs, {
         baseOptions: { modelAssetPath: url, delegate: "CPU" },
         runningMode: "VIDEO",
-        numHands: 1
+        numHands: 2
       });
       setStatus("الموديل اتحمل (CPU) ✓");
     }
