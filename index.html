@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>🌍 كوكب على إيدك</title>
+<title>🌍 كوكب على إيدك v6</title>
 <style>
   html,body{margin:0;height:100%;background:#05060a;color:#fff;font-family:Tahoma,Arial,sans-serif;overflow:hidden}
   #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
@@ -29,7 +29,7 @@
   </div>
 </div>
 <div id="ui">
-  <h1>🌍 كوكب على إيدك</h1>
+  <h1>🌍 كوكب على إيدك <small style="font-size:14px;opacity:.6">v6</small></h1>
   <div>هنفتح الكاميرا، اقفل إيدك وبعدين افتحها وشوف الكرة الأرضية والأشعة</div>
   <button id="go">ابدأ الكاميرا</button>
   <div id="status"></div>
@@ -153,7 +153,7 @@ function loop(now) {
     if (res.landmarks && res.landmarks[0]) {
       detectCount++;
       const raw = res.landmarks[0].map(p => ({ x: p.x * VW, y: p.y * VH }));
-      smooth = smooth ? smooth.map((s, i) => ({ x: s.x + (raw[i].x - s.x) * 0.55, y: s.y + (raw[i].y - s.y) * 0.55 })) : raw;
+      smooth = smooth ? smooth.map((s, i) => ({ x: s.x + (raw[i].x - s.x) * 0.8, y: s.y + (raw[i].y - s.y) * 0.8 })) : raw;
 
       const nowFist = fingersCurled(raw);
       if (nowFist === pendingFist) pendingCount++; else { pendingFist = nowFist; pendingCount = 1; }
