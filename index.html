@@ -93,18 +93,17 @@ function seg(m, p, q) {
   m.scale.set(1, len, 1);
   m.quaternion.setFromUnitVectors(Y, d.normalize());
 }
-function animateLegs(t) {
+// static pose — legs are positioned once and never animated (no walking motion)
+function poseLegsStatic() {
   for (const L of legs) {
-    const ph = t * 10 + ((L.i + (L.side > 0 ? 1 : 0)) % 2) * Math.PI;
     const dir = new THREE.Vector3(Math.cos(PHI[L.i]), L.side * Math.sin(PHI[L.i]), 0);
     const hip = new THREE.Vector3(HIPX[L.i], L.side * 0.15, 0.4);
     const foot = hip.clone().addScaledVector(dir, REACH[L.i]); foot.z = 0;
-    foot.x += Math.sin(ph) * 0.3;
-    foot.z += Math.max(0, Math.cos(ph)) * 0.3;
     const knee = hip.clone().addScaledVector(dir, REACH[L.i] * 0.5); knee.z = 1.2;
     seg(L.a, hip, knee); seg(L.b, knee, foot); L.k.position.copy(knee);
   }
 }
+poseLegsStatic(); // set once — the pose never changes
 
 /* ---------- web drawing ---------- */
 const CH = [[1,2,3,4],[5,6,7,8],[9,10,11,12],[13,14,15,16],[17,18,19,20]];
@@ -201,7 +200,7 @@ function loop(now) {
   spider.rotation.z = theta;          // spins in place like it's perched there
   const s = Math.max(palm * 0.35, 0.001);
   tilt.scale.set(s, s, s);
-  animateLegs(t);
+  // legs stay in their fixed static pose — only spider.rotation.z (above) spins the whole model
   renderer.render(scene, camera);
 }
 
