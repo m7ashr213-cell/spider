@@ -8,7 +8,7 @@
   html,body{margin:0;height:100%;background:#05060a;color:#fff;font-family:Tahoma,Arial,sans-serif;overflow:hidden}
   #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
   #stage{position:relative;transform:scaleX(-1);width:640px;height:480px;background:#000;overflow:hidden}
-  #stage video,#stage canvas{position:absolute;inset:0;width:100%;height:100%}
+  #stage video,#stage canvas{position:absolute;inset:0;width:100%;height:100%;mix-blend-mode:normal;filter:none;pointer-events:none}
   #ui{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
       gap:14px;text-align:center;background:rgba(5,6,10,.85);z-index:5;padding:20px;box-sizing:border-box}
   #ui h1{margin:0;font-size:30px}
@@ -53,6 +53,7 @@ function setErr(t){ errEl.textContent = t; if (t) console.error("[error]", t); }
 /* ---------- three.js scene ---------- */
 const renderer = new THREE.WebGLRenderer({ canvas: glC, alpha: true, antialias: true });
 renderer.setClearColor(0x000000, 0);
+renderer.toneMapping = THREE.NoToneMapping;
 const scene = new THREE.Scene();
 let camera;
 scene.add(new THREE.AmbientLight(0xffffff, 0.7));
@@ -96,12 +97,6 @@ earth.scale.x = -1;                              // the stage is mirrored, so fl
 earthPivot.add(earth);
 spider.add(earthPivot);
 
-// soft blue atmosphere glow
-const atmos = new THREE.Mesh(
-  new THREE.SphereGeometry(EARTH_R * 1.12, 48, 32),
-  new THREE.MeshBasicMaterial({ color: 0x66aaff, transparent: true, opacity: 0.18, side: THREE.BackSide, blending: THREE.AdditiveBlending, depthWrite: false })
-);
-spider.add(atmos);
 
 /* ---------- calm blue threads (stay inside the hand) ---------- */
 const TIPS = [4,8,12,16,20];
@@ -111,7 +106,7 @@ function drawRays(P, C) {
   ctx.save();
   ctx.lineCap = "round"; ctx.lineJoin = "round";
   ctx.strokeStyle = "rgba(70,160,255,.8)";
-  ctx.shadowColor = "rgba(60,140,255,.9)"; ctx.shadowBlur = 8;
+  ctx.shadowColor = "rgba(60,140,255,.6)"; ctx.shadowBlur = 4;
   ctx.lineWidth = 1.6;
   ctx.beginPath();
   // along each finger
@@ -127,7 +122,7 @@ function drawRays(P, C) {
   for (const i of TIPS) { ctx.moveTo(C.x, C.y); ctx.lineTo(P[i].x, P[i].y); }
   ctx.stroke();
   // small soft dots on the fingertips
-  ctx.fillStyle = "rgba(170,215,255,.95)"; ctx.shadowBlur = 10;
+  ctx.fillStyle = "rgba(170,215,255,.95)"; ctx.shadowBlur = 4;
   for (const i of TIPS) { ctx.beginPath(); ctx.arc(P[i].x, P[i].y, 3, 0, 7); ctx.fill(); }
   ctx.restore();
 }
@@ -185,10 +180,11 @@ function loop(now) {
   tilt.visible = spiderActive;
   const sc = Math.max(palm * 0.4, 0.001);
   const R = EARTH_R * sc;                              // globe radius in pixels
-  // direction the hand points (wrist -> middle finger base), so the globe follows hand rotation
-  let dx = P[9].x - P[0].x, dy = P[9].y - P[0].y; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
-  const gx = P[12].x + dx * (R * 1.3 + palm * 0.1);    // floats above the middle fingertip, clear of the hand
-  const gy = P[12].y + dy * (R * 1.3 + palm * 0.1);
+  // hand bounding box: globe sits straight up from the hand's horizontal center, above its top edge
+  let minX = 1e9, maxX = -1e9, minY = 1e9;
+  for (const p of P) { if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x; if (p.y < minY) minY = p.y; }
+  const gx = (minX + maxX) / 2;
+  const gy = Math.max(minY - R * 1.25, R * 1.1);       // stays inside the frame
   tilt.position.set(gx, -gy, 40);
   tilt.rotation.x = 0.35;
   earth.rotation.y += dt * 0.6;       // slow spin (delete this line for a static globe)
