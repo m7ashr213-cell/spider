@@ -103,48 +103,32 @@ const atmos = new THREE.Mesh(
 );
 spider.add(atmos);
 
-/* ---------- rays drawing ---------- */
+/* ---------- calm blue threads (stay inside the hand) ---------- */
 const TIPS = [4,8,12,16,20];
 const CH = [[1,2,3,4],[5,6,7,8],[9,10,11,12],[13,14,15,16],[17,18,19,20]];
-function beam(x1, y1, x2, y2, w, c1, c2) {
-  const g = ctx.createLinearGradient(x1, y1, x2, y2);
-  g.addColorStop(0, c1); g.addColorStop(1, c2);
-  ctx.strokeStyle = g; ctx.lineWidth = w;
-  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-}
-function drawRays(P, C, t, palm) {
+function drawRays(P, C) {
   ctx.clearRect(0, 0, VW, VH);
   ctx.save();
-  ctx.globalCompositeOperation = "lighter";
-  ctx.lineCap = "round";
-  ctx.shadowColor = "#4cf"; ctx.shadowBlur = 18;
-
-  // 1) main beams: palm center -> each fingertip, then shooting out past the tip
-  for (const i of TIPS) {
-    beam(C.x, C.y, P[i].x, P[i].y, 3, "rgba(120,200,255,.95)", "rgba(255,255,255,1)");
-    const dx = P[i].x - C.x, dy = P[i].y - C.y, len = Math.hypot(dx, dy) || 1;
-    const ext = palm * 1.6;
-    beam(P[i].x, P[i].y, P[i].x + dx/len*ext, P[i].y + dy/len*ext, 2.5, "rgba(255,255,255,.9)", "rgba(80,170,255,0)");
-  }
-  // 2) soft glowing lines along every finger
-  for (const c of CH) {
-    for (let k = 0; k < 3; k++) beam(P[c[k]].x, P[c[k]].y, P[c[k+1]].x, P[c[k+1]].y, 2, "rgba(150,220,255,.8)", "rgba(200,240,255,.8)");
-  }
-  // 3) rotating radial rays around the palm
-  ctx.shadowBlur = 10;
-  const N = 18;
-  for (let k = 0; k < N; k++) {
-    const ang = (k / N) * Math.PI * 2 + t * 0.6;
-    const r1 = palm * 0.55, r2 = palm * (1.0 + 0.45 * Math.sin(t * 3 + k * 1.7));
-    beam(C.x + Math.cos(ang)*r1, C.y + Math.sin(ang)*r1, C.x + Math.cos(ang)*r2, C.y + Math.sin(ang)*r2,
-         1.4, "rgba(255,255,255,.9)", "rgba(80,170,255,0)");
-  }
-  // 4) glow at palm center + fingertips
-  const gr = ctx.createRadialGradient(C.x, C.y, 0, C.x, C.y, palm * 0.9);
-  gr.addColorStop(0, "rgba(120,200,255,.55)"); gr.addColorStop(1, "rgba(120,200,255,0)");
-  ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(C.x, C.y, palm * 0.9, 0, 7); ctx.fill();
-  ctx.shadowBlur = 20; ctx.fillStyle = "#fff";
-  for (const i of TIPS) { ctx.beginPath(); ctx.arc(P[i].x, P[i].y, 5, 0, 7); ctx.fill(); }
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  ctx.strokeStyle = "rgba(70,160,255,.8)";
+  ctx.shadowColor = "rgba(60,140,255,.9)"; ctx.shadowBlur = 8;
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  // along each finger
+  for (const c of CH) { ctx.moveTo(P[c[0]].x, P[c[0]].y); for (let k = 1; k < 4; k++) ctx.lineTo(P[c[k]].x, P[c[k]].y); }
+  // wrist -> finger bases
+  for (const b of [1,5,9,13,17]) { ctx.moveTo(P[0].x, P[0].y); ctx.lineTo(P[b].x, P[b].y); }
+  // across the palm
+  for (const [i, j] of [[5,9],[9,13],[13,17]]) { ctx.moveTo(P[i].x, P[i].y); ctx.lineTo(P[j].x, P[j].y); }
+  ctx.stroke();
+  // thinner threads from palm center to each fingertip
+  ctx.lineWidth = 1; ctx.strokeStyle = "rgba(110,185,255,.55)";
+  ctx.beginPath();
+  for (const i of TIPS) { ctx.moveTo(C.x, C.y); ctx.lineTo(P[i].x, P[i].y); }
+  ctx.stroke();
+  // small soft dots on the fingertips
+  ctx.fillStyle = "rgba(170,215,255,.95)"; ctx.shadowBlur = 10;
+  for (const i of TIPS) { ctx.beginPath(); ctx.arc(P[i].x, P[i].y, 3, 0, 7); ctx.fill(); }
   ctx.restore();
 }
 
@@ -177,13 +161,7 @@ function loop(now) {
       smooth = smooth ? smooth.map((s, i) => ({ x: s.x + (raw[i].x - s.x) * 0.55, y: s.y + (raw[i].y - s.y) * 0.55 })) : raw;
 
       const isFist = fingersCurled(raw);
-      if (isFist) {
-        spiderActive = false;        // hidden the whole time the fist is closed
-      } else if (wasFist) {
-        spiderActive = true;         // just opened right after a closed fist -> show it
-      }
-      // if the hand was simply open and never closed, spiderActive stays at its
-      // initial false and the spider never appears until fist -> open happens
+      spiderActive = !isFist;      // open hand -> globe shown, closed fist -> globe hidden
       wasFist = isFist;
     } else {
       smooth = null;
@@ -203,13 +181,18 @@ function loop(now) {
   const C = { x: 0, y: 0 };
   for (const i of [0,5,9,13,17]) { C.x += P[i].x / 5; C.y += P[i].y / 5; }
   const palm = Math.hypot(P[0].x - P[9].x, P[0].y - P[9].y);
-  drawRays(P, C, t, palm);
+  drawRays(P, C);
   tilt.visible = spiderActive;
-  tilt.position.set(C.x, -C.y, 40);   // globe floats at the center of the palm
-  tilt.rotation.x = 0.35;             // slight tilt toward the viewer
-  earth.rotation.y += dt * 0.6;       // slow spin of the Earth (delete this line for a static globe)
-  const s = Math.max(palm * 0.55, 0.001);
-  tilt.scale.set(s, s, s);            // scales with hand distance from camera
+  const sc = Math.max(palm * 0.4, 0.001);
+  const R = EARTH_R * sc;                              // globe radius in pixels
+  // direction the hand points (wrist -> middle finger base), so the globe follows hand rotation
+  let dx = P[9].x - P[0].x, dy = P[9].y - P[0].y; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+  const gx = P[12].x + dx * (R * 1.3 + palm * 0.1);    // floats above the middle fingertip, clear of the hand
+  const gy = P[12].y + dy * (R * 1.3 + palm * 0.1);
+  tilt.position.set(gx, -gy, 40);
+  tilt.rotation.x = 0.35;
+  earth.rotation.y += dt * 0.6;       // slow spin (delete this line for a static globe)
+  tilt.scale.set(sc, sc, sc);
   renderer.render(scene, camera);
 }
 
