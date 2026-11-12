@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>🌍 كوكب على إيدك v7</title>
+<title>🌍 كوكب على إيدك v8</title>
 <style>
   html,body{margin:0;height:100%;background:#05060a;color:#fff;font-family:Tahoma,Arial,sans-serif;overflow:hidden}
   #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
@@ -29,7 +29,7 @@
   </div>
 </div>
 <div id="ui">
-  <h1>🌍 كوكب على إيدك <small style="font-size:14px;opacity:.6">v7</small></h1>
+  <h1>🌍 كوكب على إيدك <small style="font-size:14px;opacity:.6">v8</small></h1>
   <div>هنفتح الكاميرا، اقفل إيدك وافتحها عشان الكرة تظهر. بالإيد التانية: صبعين = تكبير وتصغير، صبع واحد وبلفه = تدوير</div>
   <button id="go">ابدأ الكاميرا</button>
   <div id="status"></div>
@@ -245,7 +245,7 @@ function loop(now) {
     msg.textContent = "✋ فرد إيدك قدام الكاميرا";
     renderer.render(scene, camera); return;
   }
-  msg.textContent = "";
+  msg.textContent = `v8 | أيادي: ${curHands.length} | ` + curHands.map(h => (h === curMain ? "إيد الكرة" : "إيد التحكم") + " (" + pose(h.raw) + ")").join(" + ");
   for (const h of curHands) drawRays(h.P, centerOf(h.P));
 
   // size: smooth toward target
@@ -296,7 +296,10 @@ btn.onclick = async () => {
       landmarker = await HandLandmarker.createFromOptions(fs, {
         baseOptions: { modelAssetPath: url, delegate: "GPU" },
         runningMode: "VIDEO",
-        numHands: 2
+        numHands: 2,
+        minHandDetectionConfidence: 0.35,
+        minHandPresenceConfidence: 0.35,
+        minTrackingConfidence: 0.35
       });
       setStatus("الموديل اتحمل (GPU) ✓");
     } catch (eGPU) {
@@ -305,7 +308,10 @@ btn.onclick = async () => {
       landmarker = await HandLandmarker.createFromOptions(fs, {
         baseOptions: { modelAssetPath: url, delegate: "CPU" },
         runningMode: "VIDEO",
-        numHands: 2
+        numHands: 2,
+        minHandDetectionConfidence: 0.35,
+        minHandPresenceConfidence: 0.35,
+        minTrackingConfidence: 0.35
       });
       setStatus("الموديل اتحمل (CPU) ✓");
     }
